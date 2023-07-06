@@ -74,8 +74,12 @@ int main(int argc, char **argv)
         separations = malloc(2 * nproc * sizeof(int));
         limits[0] = 1;
         limits[1] = element_per_rank;
+        if (nproc == 1)
+            limits[1] = N - 1;
         separations[0] = 1;
         separations[1] = element_per_rank;
+        if (nproc == 1)
+            separations[1] = N - 1;
         for (i = 1; i < nproc; i++)
         {
             if (i == nproc - 1)
@@ -140,12 +144,13 @@ int main(int argc, char **argv)
         // SEND ALL TO THE FIRST RANK TO ACTUALIZE THE BOUNDARIES
         if (myid != 0)
         {
-            printf("sending to rank 0 from rank %d    || ligne %d et %d\n", myid, limits[0], limits[1] - 1);
+            printf("R%d  sending to rank 0   || ligne %d\n", myid, limits[0]);
 
             double *linePtr = &(f[0][limits[0]][0]);
             MPI_Send(linePtr, N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD); // Send rows that are next to the previous rank (up in the scheme)
             if (myid != nproc - 1)
             {
+                printf("R%d  sending to rank 0   || ligne %d\n", myid, limits[1] - 1);
                 linePtr = &(f[0][limits[1] - 1][0]);
                 MPI_Send(linePtr, N, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD); // Send rows that are next to the next rank (down in the scheme) the last row
             }
@@ -155,17 +160,18 @@ int main(int argc, char **argv)
             for (int i = 1; i < nproc; i++)
             {
 
-                printf("waiting receiving from rank %d     ||  lignes %d et %d\n", i, separations[2 * i], separations[2 * i + 1]);
+                printf("R0 waiting receiving from rank %d     ||  lignes %d\n", i, separations[2 * i]);
                 double received[N];
                 MPI_Recv(received, N, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status); // Receive rows
                 memcpy(f[0][separations[2 * i]], received, N * sizeof(double));
                 if (i != nproc - 1)
                 {
+                    printf("R0 waiting receiving from rank %d     ||  lignes %d\n", i, separations[2 * i + 1]);
                     MPI_Recv(received, N, MPI_DOUBLE, i, 1, MPI_COMM_WORLD, &status); // Receive rows
                     memcpy(f[0][separations[2 * i + 1] - 1], received, N * sizeof(double));
 
                 } // if not the last rank
-                printf("received from rank %d\n", i);
+                printf("R0 received from rank %d\n\n", i);
             }
         }
 
@@ -176,12 +182,14 @@ int main(int argc, char **argv)
         {
             for (int i = 1; i < nproc; i++)
             {
-                printf("sending to rank %d from rank 0\n    ||   lignes %d et %d", i, separations[2 * (i - 1) + 1], separations[2 * (i + 1)]);
+                printf("R0 sending to rank %d    ||   lignes %d\n", i, separations[2 * i] - 1);
 
-                double *linePtr = &(f[0][separations[2 * (i - 1) + 1]][0]);
+                double *linePtr = &(f[0][separations[2 * i] - 1][0]);
                 MPI_Send(linePtr, N, MPI_DOUBLE, i, 0, MPI_COMM_WORLD); // Send last row from previous rank
                 if (i != nproc - 1)
                 {
+                    printf("R0 sending to rank %d    ||   lignes %d\n", i, separations[2 * (i + 1)]);
+
                     linePtr = &(f[0][separations[2 * (i + 1)]][0]);
                     MPI_Send(linePtr, N, MPI_DOUBLE, i, 1, MPI_COMM_WORLD); // Send first row from next rank
                 }
@@ -189,13 +197,13 @@ int main(int argc, char **argv)
         }
         else
         {
-            printf("waiting receiving on rank %d     ||    lignes %d et %d\n", myid, limits[0] - 1, limits[1]);
+            printf("R%d waiting receiving ||    lignes %d\n", myid, limits[0] - 1);
             double received[N];
             MPI_Recv(received, N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status); // Receive row from previous rank
             memcpy(f[0][limits[0] - 1], received, N * sizeof(double));
             if (myid != nproc - 1)
             {
-                printf("d\n");
+                printf("R%d waiting receiving ||    lignes %d\n", myid, limits[1]);
                 MPI_Recv(received, N, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &status); // Receive row from next rank
                 memcpy(f[0][limits[1]], received, N * sizeof(double));
             }

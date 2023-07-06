@@ -1,0 +1,16 @@
+rank 1, thread 1, time11.488129
+rank 1, thread 2, time10.436835
+rank 1, thread 3, time10.019992
+rank 1, thread 4, time10.136498
+rank 2, thread 1, time5.849175
+rank 2, thread 2, time6.054536
+rank 2, thread 3, time11.614893
+rank 2, thread 4, time64.308949
+rank 3, thread 1, time3.967550
+rank 3, thread 2, time12.501548
+rank 3, thread 3, time159.418694
+rank 3, thread 4, time159.418694
+rank 4, thread 1, time3.345110
+rank 4, thread 2, time49.385250
+rank 4, thread 3, time49.385250
+rank 4, thread 4, time49.385250
