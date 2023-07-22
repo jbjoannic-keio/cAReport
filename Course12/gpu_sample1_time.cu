@@ -20,12 +20,12 @@ __host__ void cpu_kernel(float *d_A, float *d_B, float *d_C, int len)
 
 int main(int argc, char **argv)
 {
-    float *h_A, *h_B, *h_C;  // for host memory
-    float *d_A, *d_B, *d_C;  // for device memory
-    float result;     // resut
-    dim3 grid(N/BSIZE, 1, 1), block(BSIZE, 1, 1); // grid and block size
-    cudaEvent_t start, stop;              // for measument time on GPU
-    struct timeval start_time, end_time;  // for measument time on CPU
+    float *h_A, *h_B, *h_C;                         // for host memory
+    float *d_A, *d_B, *d_C;                         // for device memory
+    float result;                                   // resut
+    dim3 grid(N / BSIZE, 1, 1), block(BSIZE, 1, 1); // grid and block size
+    cudaEvent_t start, stop;                        // for measument time on GPU
+    struct timeval start_time, end_time;            // for measument time on CPU
     float elapsed_time;
 
     cudaEventCreate(&start);
@@ -36,8 +36,11 @@ int main(int argc, char **argv)
     h_B = (float *)malloc(sizeof(float) * N);
     h_C = (float *)malloc(sizeof(float) * N);
 
-    for (int i = 0; i < N; ++i) {
-        h_A[i] = 1.0f; h_B[i] = 2.0f; h_C[i] = 0.0f;
+    for (int i = 0; i < N; ++i)
+    {
+        h_A[i] = 1.0f;
+        h_B[i] = 2.0f;
+        h_C[i] = 0.0f;
     }
 
     /* device memory allocation */
@@ -49,7 +52,7 @@ int main(int argc, char **argv)
     cudaMemcpy(d_A, h_A, sizeof(float) * N, cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, h_B, sizeof(float) * N, cudaMemcpyHostToDevice);
 
-    /* The host calles the karnel */ 
+    /* The host calles the karnel */
     cudaEventRecord(start, 0);
 
     gpu_kernel<<<grid, block>>>(d_A, d_B, d_C, N);
@@ -62,13 +65,15 @@ int main(int argc, char **argv)
     cudaMemcpy(h_C, d_C, sizeof(float) * N, cudaMemcpyDeviceToHost);
 
     /*  Release device memory */
-    cudaFree(d_A); cudaFree(d_B); cudaFree(d_C);
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
 
     /* check the result for GPU */
     result = 0.0;
     for (int i = 0; i < N; ++i)
         result += h_C[i];
-    result /= (float) N;
+    result /= (float)N;
     printf("GPU: result = %f, time = %f [msec]\n", result, elapsed_time);
 
     /* check the result for CPU */
@@ -83,11 +88,13 @@ int main(int argc, char **argv)
     result = 0.0;
     for (int i = 0; i < N; ++i)
         result += h_C[i];
-    result /= (float) N;
+    result /= (float)N;
     printf("CPU: result = %f, time = %f [msec]\n", result, elapsed_time);
 
     /*  Release host memory  */
-    free(h_A); free(h_B); free(h_C);
+    free(h_A);
+    free(h_B);
+    free(h_C);
 
-  return 0;
+    return 0;
 }

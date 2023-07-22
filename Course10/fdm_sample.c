@@ -35,7 +35,7 @@ int main(int argc, char **argv)
     int len = 100;
     char hname[len];
 
-    int nth;
+    int nth; // get number of threads from command line argument
     nth = atoi(argv[1]);
     omp_set_num_threads(nth);
 
@@ -62,11 +62,15 @@ int main(int argc, char **argv)
 
     start = MPI_Wtime();
     MPI_Get_processor_name(hname, &len);
-    printf("Rank: %d (Machine: %s)\n", myid, hname);
-    printf("procnum = %d\n", nproc);
+
+    // each rank will process this number of elements, except the last one that will process the rest also
     int element_per_rank = N / nproc;
 
+    // I will use a strategy where the processor 0 is receiving the data and broadcasting it to the other processors
+    // this way, there is no communication between other processors
+
     // only proc 0 will have the separations array, to avoid sending it to all the other procs
+    // the array will have the limits of each processor, the first line and the last one to process
     int *separations;
     int limits[2];
     if (myid == 0)
@@ -94,14 +98,8 @@ int main(int argc, char **argv)
             }
         }
     }
-    // print separations
-    if (myid == 0)
-    {
-        for (i = 0; i < 2 * nproc; i++)
-            printf("separations[%d] = %d\n", i, separations[i]);
-    }
 
-    // Each proc will have its own upper and lower limits
+    // Each proc will have its own upper and lower limits for the lines to process
     else
     {
         if (myid == nproc - 1)
@@ -116,41 +114,36 @@ int main(int argc, char **argv)
         }
     }
 
-    printf("N %d \nrank=%d lower=%d upper=%d\n", N, myid, limits[0], limits[1]);
     /* main calculation */
-
     for (st = 0; st < NSTEP; st++)
     {
-        printf("start STEP number %d on rank %d\n", st, myid);
+
+        // We separate the lines for each processors given there limits
         for (i = limits[0]; i < limits[1]; i++) // MPI (limits are unique to each process), but not f
         {
+            // We separate the column for each threads
 #pragma omp parallel for
             for (j = 1; j < N - 1; j++)
             {
-                if (st == 0 && i == 1 && j == 1)
-                    printf("thread from %d\n", omp_get_thread_num());
                 f[1][i][j] = f[0][i][j] + KAPPA * (f[0][i][j - 1] + f[0][i][j + 1] + f[0][i - 1][j] + f[0][i + 1][j] - 4.0 * f[0][i][j]);
             }
         }
-        printf("end computation on rank %d\n", myid);
 
-        // ACTUALIZE
         for (i = limits[0]; i < limits[1]; i++)
 #pragma omp parallel for
             for (j = 0; j < N; j++)
                 f[0][i][j] = f[1][i][j];
 
-        //
-        // SEND ALL TO THE FIRST RANK TO ACTUALIZE THE BOUNDARIES
+        // We should only communicate the lines that are next to the other processors for the next step
+
+        // We send all the internal boundary lines to the processor 0
         if (myid != 0)
         {
-            printf("R%d  sending to rank 0   || ligne %d\n", myid, limits[0]);
 
             double *linePtr = &(f[0][limits[0]][0]);
             MPI_Send(linePtr, N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD); // Send rows that are next to the previous rank (up in the scheme)
             if (myid != nproc - 1)
             {
-                printf("R%d  sending to rank 0   || ligne %d\n", myid, limits[1] - 1);
                 linePtr = &(f[0][limits[1] - 1][0]);
                 MPI_Send(linePtr, N, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD); // Send rows that are next to the next rank (down in the scheme) the last row
             }
@@ -159,37 +152,29 @@ int main(int argc, char **argv)
         {
             for (int i = 1; i < nproc; i++)
             {
-
-                printf("R0 waiting receiving from rank %d     ||  lignes %d\n", i, separations[2 * i]);
                 double received[N];
                 MPI_Recv(received, N, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status); // Receive rows
                 memcpy(f[0][separations[2 * i]], received, N * sizeof(double));
                 if (i != nproc - 1)
                 {
-                    printf("R0 waiting receiving from rank %d     ||  lignes %d\n", i, separations[2 * i + 1]);
                     MPI_Recv(received, N, MPI_DOUBLE, i, 1, MPI_COMM_WORLD, &status); // Receive rows
                     memcpy(f[0][separations[2 * i + 1] - 1], received, N * sizeof(double));
 
                 } // if not the last rank
-                printf("R0 received from rank %d\n\n", i);
             }
         }
 
         //
 
-        // SEND TO ALL RANKS TO ACTUALIZE THEIR EXTERNAL BOUNDARIES
+        // We send all the external boundary lines to all the processors
         if (myid == 0)
         {
             for (int i = 1; i < nproc; i++)
             {
-                printf("R0 sending to rank %d    ||   lignes %d\n", i, separations[2 * i] - 1);
-
                 double *linePtr = &(f[0][separations[2 * i] - 1][0]);
                 MPI_Send(linePtr, N, MPI_DOUBLE, i, 0, MPI_COMM_WORLD); // Send last row from previous rank
                 if (i != nproc - 1)
                 {
-                    printf("R0 sending to rank %d    ||   lignes %d\n", i, separations[2 * (i + 1)]);
-
                     linePtr = &(f[0][separations[2 * (i + 1)]][0]);
                     MPI_Send(linePtr, N, MPI_DOUBLE, i, 1, MPI_COMM_WORLD); // Send first row from next rank
                 }
@@ -197,29 +182,24 @@ int main(int argc, char **argv)
         }
         else
         {
-            printf("R%d waiting receiving ||    lignes %d\n", myid, limits[0] - 1);
             double received[N];
             MPI_Recv(received, N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status); // Receive row from previous rank
             memcpy(f[0][limits[0] - 1], received, N * sizeof(double));
             if (myid != nproc - 1)
             {
-                printf("R%d waiting receiving ||    lignes %d\n", myid, limits[1]);
                 MPI_Recv(received, N, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &status); // Receive row from next rank
                 memcpy(f[0][limits[1]], received, N * sizeof(double));
             }
-            printf("receiving on rank %d\n", myid);
         }
     }
 
-    // FINAL ACTUALIZATION. ALL IS SEND TO 0
-
+    // We send all the lines to the processor 0 to have the final result
     if (myid != 0)
     {
         int elements_nb = (limits[1] - limits[0]) * N;
 
         if (myid == nproc - 1)
             elements_nb += N; // we need to add the last row if this is the last rank
-        printf("FINAL sending to rank 0 from rank %d     || line %d to %d   ||  element_nb %d\n", myid, limits[0], limits[1], elements_nb);
         double *linePtr = &(f[0][limits[0]][0]);
         MPI_Send(linePtr, elements_nb, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD); // Send row from limit 0 to limit 1
     }
@@ -231,7 +211,6 @@ int main(int argc, char **argv)
             int elements_nb = (separations[2 * i + 1] - separations[2 * i]) * N;
             if (i == nproc - 1)
                 elements_nb += N; // we need to add the last row if this is the last rank
-            printf("FINAL waiting receiving from rank %d     ||    line %d to %d    ||   elementnb %d\n", i, separations[2 * i], separations[2 * i + 1], elements_nb);
             double received[elements_nb];
             MPI_Recv(received, elements_nb, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status); // Receive row from limit 0 to limit 1
             memcpy(f[0][separations[2 * i]], received, elements_nb * sizeof(double));
@@ -246,8 +225,11 @@ int main(int argc, char **argv)
         for (j = N / 4; j < N / 2; j++)
             tmp += f[0][i][j];
 
-    printf("rank %d check sum = %lf\n", myid, tmp);
-    printf("time = %lf [sec]\n", end - start);
+    if (myid == 0) // only processor 0 will have the correct result
+    {
+        printf("rank %d check sum = %lf\n", myid, tmp);
+        printf("time = %lf [sec]\n", end - start);
+    }
     char name[20];
     sprintf(name, "%d", myid);
     fout(name);
